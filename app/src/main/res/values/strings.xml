@@ -275,6 +275,8 @@
   <string name="pref_player_gestures_swipe_subtitles_to_seek_dialog">Swipe subtitles to seek dialog</string>
   <string name="pref_player_gestures_swipe_subtitles_invert_direction">Invert swipe subtitles direction</string>
   <string name="pref_player_gestures_swipe_subtitles_invert_direction_summary">Swipe right-to-left to seek forward, left-to-right to seek backward</string>
+  <string name="pref_player_gestures_swipe_subtitles_mx_style">MX Player swipe area</string>
+  <string name="pref_player_gestures_swipe_subtitles_mx_style_summary">Drag a subtitle to move it instantly, without holding or a distance gate. Swiping the subtitle area pauses playback and browses the next or previous subtitle line, exactly like MX Player: left for the next one, right for the previous one, with MX\'s ~38 dp threshold. When off, the swipe seeks instead.</string>
   <string name="pref_player_gestures_horizontal_swipe_to_seek">Horizontal swipe to seek</string>
   <string name="pref_player_gestures_enable_center_swipe_up_gesture">Swipe up in center for playlist</string>
   <string name="pref_player_gestures_horizontal_swipe_sensitivity">Horizontal swipe sensitivity</string>
@@ -298,6 +300,8 @@
   <string name="pref_gesture_use_single_tap_for_center_summary">Use a single tap in the center for gestures (like play/pause) instead of a double tap.</string>
   <string name="pref_gesture_center_vertical_subtitle_position_title">Hold and drag subtitles</string>
   <string name="pref_gesture_center_vertical_subtitle_position_summary">Hold the center, then drag up or down to move primary subtitles. Hold directly on either subtitle to move that track independently. Normal swipes still open the playlist.</string>
+  <string name="pref_gesture_drag_subtitles_directly_title">Drag subtitles directly</string>
+  <string name="pref_gesture_drag_subtitles_directly_summary">While a subtitle is on screen, drag it up or down to move it immediately, without holding first. Only vertical movement moves it; taps and horizontal swipes keep working.</string>
   <string name="pref_gesture_double_tap_custom_info">You can bind custom actions to these gestures in input.conf using the following key codes:\n\nLeft: MBTN_LEFT_DBL\nCenter: MBTN_MID_DBL\nRight: MBTN_RIGHT_DBL</string>
   <string name="pref_gesture_media_title">Media controls</string>
   <string name="pref_gesture_media_previous">Previous</string>

@@ -137,12 +137,14 @@ fun GestureHandler(
   val useSingleTapForCenter by gesturePreferences.useSingleTapForCenter.collectAsState()
   val doubleTapSeekAreaWidth by gesturePreferences.doubleTapSeekAreaWidth.collectAsState()
   val centerVerticalSubtitlePositionGesture by gesturePreferences.centerVerticalSubtitlePositionGesture.collectAsState()
+  val dragSubtitlesDirectly by gesturePreferences.dragSubtitlesDirectly.collectAsState()
   val enableCenterSwipeUpGesture by gesturePreferences.enableCenterSwipeUpGesture.collectAsState()
   val enableVideoMiniPlayer by playerPreferences.enableVideoMiniPlayer.collectAsState()
   val pinchToZoomSubtitles by gesturePreferences.pinchToZoomSubtitles.collectAsState()
   val secondarySubPinchZoomEnabled by subtitlesPreferences.secondarySubPinchZoom.collectAsState()
   val swipeSubtitlesToSeekDialog by gesturePreferences.swipeSubtitlesToSeekDialog.collectAsState()
   val isSwipeSubtitlesInverted by gesturePreferences.swipeSubtitlesInvertDirection.collectAsState()
+  val swipeSubtitlesMxStyle by gesturePreferences.swipeSubtitlesMxStyle.collectAsState()
   var isDoubleTapSeeking by remember { mutableStateOf(false) }
   var lastSeekRegion by remember { mutableStateOf<String?>(null) }
   var lastSeekTime by remember { mutableStateOf<Long?>(null) }
@@ -193,10 +195,10 @@ fun GestureHandler(
     suppressHorizontalSeekForPointer = false
   }
 
-  fun claimGesture(owner: GestureOwner): Boolean {
+  fun claimGesture(owner: GestureOwner, markPointerClaim: Boolean = true): Boolean {
     if (gestureOwner != null && gestureOwner != owner) return false
     gestureOwner = owner
-    gestureClaimedForPointer = true
+    if (markPointerClaim) gestureClaimedForPointer = true
     return true
   }
 
@@ -474,6 +476,7 @@ fun GestureHandler(
           brightnessGesture,
           volumeGesture,
           centerVerticalSubtitlePositionGesture,
+          dragSubtitlesDirectly,
           enableCenterSwipeUpGesture,
           enableVideoMiniPlayer,
           externalPanelShown,
@@ -521,6 +524,9 @@ fun GestureHandler(
             val selectedSubtitle = touchedSubtitle ?: centerSubtitle
             val subtitleGestureGeneration = PlaybackSession.state.value.generation
             val isStartOnSubtitleText = subtitleHit != null
+            // Direct subtitle drag: a touch that lands on a visible subtitle moves it as soon as the
+            // finger travels vertically, with no hold delay.
+            val directSubtitleDrag = dragSubtitlesDirectly && touchedSubtitle != null
             speedHoldPending = paused == false && multipleSpeedGesture > 0f && selectedSubtitle == null
 
             // Reset long press tracking at the start of each gesture
@@ -545,6 +551,14 @@ fun GestureHandler(
             // A moving finger is a swipe, not a pending subtitle long-press.
             var subtitleHoldEligible = selectedSubtitle != null
             var subtitleHighlightShown = false
+            // MX Player tints the subtitle as soon as a finger lands on its text, before any
+            // movement, and clears it on lift. Verified in MX 3.3.1 smali (ActivityScreen.f8,
+            // ACTION_DOWN branch): gestures bit 0x200 (subtitle_updown), SubView visible, hit
+            // test true -> setTextBackColor(0x60DDDDDD); the ACTION_UP path resets it to 0.
+            if (directSubtitleDrag) {
+              subtitleHighlightShown = true
+              viewModel.setSubtitleGestureHighlight(true, touchedSubtitle?.target)
+            }
 
             // Original speed for long press
             var originalSpeed = playbackSpeed ?: 1f
@@ -558,7 +572,8 @@ fun GestureHandler(
                 delay(longPressDelay)
                 if (!longPressTriggered) {
                   // Gesture movement cancels the subtitle hold before this callback runs.
-                  if (subtitleHoldEligible || !isStartOnSubtitleText) {
+                  // Direct drags never wait for this callback; they claim the gesture on movement.
+                  if (!directSubtitleDrag && (subtitleHoldEligible || !isStartOnSubtitleText)) {
                     if (subtitleHoldEligible && claimGesture(GestureOwner.SUBTITLE_VERTICAL)) {
                       longPressTriggered = true
                       isSubtitleHoldActive = true
@@ -627,8 +642,26 @@ fun GestureHandler(
                         longPressJob.cancel()
                       }
 
-                      // Determine gesture type based on initial drag direction
-                      if (gestureType == null && (abs(deltaX) > 20f || abs(deltaY) > 20f)) {
+                      // MX Player claims a touched subtitle immediately: the first movement event
+                      // moves it, with no distance gate. A clearly horizontal swipe is left to the
+                      // cue-jump gesture instead, so both subtitle gestures coexist.
+                      if (gestureType == null && directSubtitleDrag &&
+                        abs(deltaY) >= abs(deltaX) &&
+                        (abs(deltaX) > 0.5f || abs(deltaY) > 0.5f) &&
+                        // Claim the drag but leave the pointer unclaimed until it passes the
+                        // app's 10 px tap-cancel distance, so a tap on a subtitle still toggles
+                        // the controls instead of being swallowed.
+                        claimGesture(GestureOwner.SUBTITLE_VERTICAL, markPointerClaim = false)
+                      ) {
+                        isSubtitleHoldActive = true
+                        speedHoldPending = false
+                        suppressHorizontalSeekForPointer = true
+                        longPressJob.cancel()
+                        actionHaptics.pickup()
+                        subtitleHighlightShown = true
+                        viewModel.setSubtitleGestureHighlight(true, selectedSubtitle?.target)
+                        gestureType = "subtitle_vertical"
+                      } else if (gestureType == null && (abs(deltaX) > 20f || abs(deltaY) > 20f)) {
                         val isHorizontalDrag = abs(deltaX) > abs(deltaY) * 1.5f
                         val isVerticalDrag = abs(deltaY) > abs(deltaX) * 1.5f
 
@@ -730,7 +763,16 @@ fun GestureHandler(
                           }
                           "subtitle_vertical" -> {
                             isVerticalGestureActive = true
-                            subtitleDragStartY = currentPosition.y
+                            // Past the tap-cancel distance a tap can no longer fire, so mark the
+                            // pointer claimed from here on.
+                            if (!gestureClaimedForPointer &&
+                              sqrt(deltaX * deltaX + deltaY * deltaY) > 10f
+                            ) {
+                              gestureClaimedForPointer = true
+                            }
+                            // Direct drags keep the finger-down baseline so the subtitle tracks the
+                            // finger one-to-one instead of jumping to where the hold completed.
+                            if (!directSubtitleDrag) subtitleDragStartY = currentPosition.y
                             subtitleDragPosition = selectedSubtitle?.position ?: subtitleDragPosition
                             if (!subtitleHighlightShown) {
                               viewModel.setSubtitleGestureHighlight(true, selectedSubtitle?.target)
@@ -1262,6 +1304,7 @@ fun GestureHandler(
           isVerticalGestureActive,
           swipeSubtitlesToSeekDialog,
           isSwipeSubtitlesInverted,
+          swipeSubtitlesMxStyle,
           anyPanelShown,
         ) {
           if ((!horizontalSwipeToSeek && !swipeSubtitlesToSeekDialog) ||
@@ -1279,8 +1322,16 @@ fun GestureHandler(
 
             val primaryRegion = subtitleRegions(size.width.toFloat(), size.height.toFloat())
               .find { it.target == SubtitleGestureTarget.Primary }
+            // MX Player claims everything from the subtitle's top edge downward (zero slop)
+            // instead of requiring a hit on the estimated text box.
             val isSubtitleTouch = swipeSubtitlesToSeekDialog &&
-              primaryRegion?.contains(startPosition.x, startPosition.y, 12.dp.toPx()) == true
+              if (swipeSubtitlesMxStyle) {
+                // MX Player uses the whole area from the subtitle's top edge downward; the
+                // direction of the first movement decides between dragging and cue jumping.
+                primaryRegion != null && startPosition.y >= primaryRegion.top
+              } else {
+                primaryRegion?.contains(startPosition.x, startPosition.y, 12.dp.toPx()) == true
+              }
 
             var gestureType: String? = null
             var hasStartedSeeking = false
@@ -1289,6 +1340,8 @@ fun GestureHandler(
             var wasPlayerAlreadyPaused = false
             // Use the sensitivity preference instead of hardcoded value
             val seekSensitivity = horizontalSwipeSensitivity
+            // MX Player gates the swipe at 0.2362206 * densityDpi px (~37.8 dp).
+            val subtitleSwipeThreshold = if (swipeSubtitlesMxStyle) 37.8.dp.toPx() else 40f
 
             try {
               do {
@@ -1306,16 +1359,31 @@ fun GestureHandler(
                       if (
                         gestureType == null &&
                         isSubtitleTouch &&
-                        abs(deltaX) > 40f &&
+                        abs(deltaX) > subtitleSwipeThreshold &&
                         abs(deltaX) > abs(deltaY) * 2f &&
                         claimGesture(GestureOwner.SUBTITLE_SEEK)
                       ) {
                         gestureType = "subtitle_dialog_seek"
                         hasStartedSeeking = true
                         viewModel.setSubtitleGestureHighlight(true, SubtitleGestureTarget.Primary)
-                        val isForward = if (isSwipeSubtitlesInverted) deltaX < 0 else deltaX > 0
+                        // MX Player: drag right = previous subtitle, drag left = next subtitle.
+                        val isForward =
+                          if (swipeSubtitlesMxStyle) {
+                            if (isSwipeSubtitlesInverted) deltaX > 0 else deltaX < 0
+                          } else {
+                            if (isSwipeSubtitlesInverted) deltaX < 0 else deltaX > 0
+                          }
                         val direction = if (isForward) "1" else "-1"
-                        PlaybackSession.command("sub-seek", direction)
+                        if (swipeSubtitlesMxStyle) {
+                          // MX Player pauses and browses the neighbouring cue instead of seeking,
+                          // so mirror that: pause, then step the displayed subtitle line.
+                          if (paused != true) {
+                            viewModel.pause()
+                          }
+                          PlaybackSession.command("sub-step", direction)
+                        } else {
+                          PlaybackSession.command("sub-seek", direction)
+                        }
                         viewModel.playerUpdate.update {
                           PlayerUpdates.ShowText(
                             context.getString(

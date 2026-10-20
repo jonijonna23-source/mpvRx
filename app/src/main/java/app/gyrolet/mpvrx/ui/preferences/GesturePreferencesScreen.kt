@@ -183,6 +183,20 @@ object GesturePreferencesScreen : Screen {
 
               PreferenceDivider()
 
+              val swipeSubtitlesMxStyle by preferences.swipeSubtitlesMxStyle.collectAsState()
+              SwitchPreference(
+                modifier = Modifier.settingsSearchTarget(R.string.pref_player_gestures_swipe_subtitles_mx_style),
+                value = swipeSubtitlesMxStyle,
+                onValueChange = preferences.swipeSubtitlesMxStyle::set,
+                title = { Text(stringResource(R.string.pref_player_gestures_swipe_subtitles_mx_style)) },
+                summary = {
+                  Text(stringResource(R.string.pref_player_gestures_swipe_subtitles_mx_style_summary))
+                },
+                enabled = swipeSubtitlesToSeekDialog,
+              )
+
+              PreferenceDivider()
+
               val swipeSubtitlesInvertDirection by preferences.swipeSubtitlesInvertDirection.collectAsState()
               SwitchPreference(
                 modifier = Modifier.settingsSearchTarget(R.string.pref_player_gestures_swipe_subtitles_invert_direction),
@@ -499,6 +513,20 @@ object GesturePreferencesScreen : Screen {
                 summary = {
                   Text(
                     text = stringResource(R.string.pref_gesture_center_vertical_subtitle_position_summary),
+                    color = MaterialTheme.colorScheme.outline,
+                  )
+                },
+              )
+
+              val dragSubtitlesDirectly by preferences.dragSubtitlesDirectly.collectAsState()
+              SwitchPreference(
+                modifier = Modifier.settingsSearchTarget(R.string.pref_gesture_drag_subtitles_directly_title),
+                value = dragSubtitlesDirectly,
+                onValueChange = { preferences.dragSubtitlesDirectly.set(it) },
+                title = { Text(text = stringResource(R.string.pref_gesture_drag_subtitles_directly_title)) },
+                summary = {
+                  Text(
+                    text = stringResource(R.string.pref_gesture_drag_subtitles_directly_summary),
                     color = MaterialTheme.colorScheme.outline,
                   )
                 },

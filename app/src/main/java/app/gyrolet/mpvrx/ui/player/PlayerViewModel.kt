@@ -151,7 +151,8 @@ import kotlin.random.Random
 import kotlin.reflect.KProperty
 
 // ~45% opaque charcoal (#AARRGGBB): visible on bright scenes without hiding the video like solid black.
-private const val SUBTITLE_GESTURE_HIGHLIGHT_COLOR = "#73202429"
+// MX Player tints the subtitle background with 0x60DDDDDD while a subtitle is being moved.
+private const val SUBTITLE_GESTURE_HIGHLIGHT_COLOR = "#60DDDDDD"
 private const val SUBTITLE_GESTURE_HIGHLIGHT_PADDING = 8f
 
 private data class SubtitleGestureBoxStyle(
